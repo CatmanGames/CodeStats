@@ -89,6 +89,7 @@ public final class Parser {
     public static final HashMap<String, OverViewEntry> overView = new HashMap<>(10);
     public static final HashMap<String, ArrayList<StatEntry>> tabs = new HashMap<>(6);
     private static final HashSet<String> excludedTypes = new HashSet<>(16, 1);
+    private static final HashSet<String> excludedFileNames = new HashSet<>(16, 1);
     private static final HashSet<String> excludedDirs = new HashSet<>(16, 1);
     private static final HashSet<String> whiteListTypes = new HashSet<>(16, 1);
     private static final ArrayList<Pattern> excludedRegexes = new ArrayList<>(16);
@@ -130,6 +131,9 @@ public final class Parser {
             @Override
             public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) {
                 String extension = ParsingUtil.getFileExtension(path.getFileName().toString());
+                if (excludedFileNames.contains(path.getFileName().toString())) {
+                    return FileVisitResult.CONTINUE;
+                }
                 if (whiteListTypes.isEmpty()) {
                     if (!extension.isEmpty() && !excludedTypes.contains(extension)) {
                         parseFile(path, extension);
@@ -252,6 +256,9 @@ public final class Parser {
         for (String regex : save.excludedRegex) {
             excludedRegexes.add(Pattern.compile(regex));
         }
+
+        excludedFileNames.add("package.json");
+        excludedFileNames.add("package-lock.json");
     }
 
     public void updatePane(boolean isSilentUpdate, Path path) {
