@@ -29,10 +29,7 @@ import com.gk646.codestats.settings.PersistentSave;
 import com.gk646.codestats.settings.SettingsPanel;
 import com.gk646.codestats.ui.LineChartPanel;
 import com.gk646.codestats.ui.UIHelper;
-import com.gk646.codestats.util.BoolContainer;
-import com.gk646.codestats.util.IntellijUtil;
-import com.gk646.codestats.util.ParsingUtil;
-import com.gk646.codestats.util.TimePoint;
+import com.gk646.codestats.util.*;
 import com.intellij.icons.AllIcons;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
@@ -43,7 +40,10 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
@@ -73,11 +73,7 @@ import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Locale;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -96,6 +92,7 @@ public final class Parser {
     private static final HashSet<String> excludedDirs = new HashSet<>(16, 1);
     private static final HashSet<String> whiteListTypes = new HashSet<>(16, 1);
     private static final ArrayList<Pattern> excludedRegexes = new ArrayList<>(16);
+    private static final Logger log = LoggerFactory.getLogger(Parser.class);
     private final FileVisitor<Path> visitor;
     public AtomicBoolean isUpdating = new AtomicBoolean(false);
     public boolean commitHappened = false;
@@ -147,12 +144,12 @@ public final class Parser {
     }
 
     private void initializeOverviewTab() {
-        String[] columnNames = {"Extension", "Count", "Size SUM", "Size MIN", "Size MAX", "Size AVG", "Lines", "Lines MIN", "Lines MAX", "Lines AVG", "Lines CODE"};
+        String[] columnNames = {"Extension", "Count", "Size SUM", "Size MIN", "Size MAX", "Size AVG", "Lines", "Lines MIN", "Lines MAX", "Lines AVG", "Lines CODE", "Chars", "Chars AVG"};
         overviewModel = new DefaultTableModel(columnNames, 0);
         overviewTable = new JBTable(overviewModel);
         setupTable(overviewTable, UIHelper.OverViewTableCellRenderer, UIHelper.getOverViewTableSorter(new TableRowSorter<>(overviewModel)));
 
-        footerModel = new DefaultTableModel(new String[]{"", "", "", "", "", "", "", "", "", "", ""}, 1);
+        footerModel = new DefaultTableModel(new String[]{"", "", "", "", "", "", "", "", "", "", "", "", ""}, 1);
         footerTable = new JBTable(footerModel);
         setupFooter(footerTable);
 
@@ -217,6 +214,8 @@ public final class Parser {
         if (save.excludeCompiler) {
             excludedDirs.add(projectPath + File.separator + "out");
             excludedDirs.add(projectPath + File.separator + "build");
+            excludedDirs.add(projectPath + File.separator + "api/build");
+            excludedDirs.add(projectPath + File.separator + "generated");
             excludedDirs.add(projectPath + File.separator + ".gradle");
             excludedDirs.add(projectPath + File.separator + "target");
             excludedDirs.add(projectPath + File.separator + "cmake-build-debug");
@@ -281,7 +280,7 @@ public final class Parser {
         DecimalFormat df = new DecimalFormat("#,###kb", new DecimalFormatSymbols(germanLocale));
 
         var data = new Object[overView.size()][];
-        var footerData = new Object[][]{{"Total:", 0, 0L, 0L, 0L, 0L, 0, 0, 0, 0, 0}};
+        var footerData = new Object[][]{{"Total:", 0, 0L, 0L, 0L, 0L, 0, 0, 0, 0, 0, 0, 0}};
         int i = 0;
         for (var pair : overView.entrySet()) {
             var entry = pair.getValue();
@@ -297,7 +296,9 @@ public final class Parser {
                     entry.linesMin,
                     entry.linesMax,
                     entry.lines / entry.count,
-                    entry.linesCode
+                    entry.linesCode,
+                    entry.chars,
+                    entry.chars / entry.count
             };
             footerData[0][1] = (int) footerData[0][1] + entry.count;
             footerData[0][2] = (long) footerData[0][2] + entry.sizeSum / 1000;
@@ -309,16 +310,21 @@ public final class Parser {
             footerData[0][8] = (int) footerData[0][8] + entry.linesMax;
             footerData[0][9] = (int) footerData[0][9] + entry.lines / entry.count;
             footerData[0][10] = (int) footerData[0][10] + entry.linesCode;
+            footerData[0][11] = (int) footerData[0][11] + entry.chars;
+            footerData[0][12] = (int) footerData[0][12] + entry.chars / entry.count;
             i++;
         }
+        footerData[0][6] = FormatUtils.formatInt((int) footerData[0][6]);
+        footerData[0][11] = FormatUtils.formatInt((int) footerData[0][11]);
+        footerData[0][12] = FormatUtils.formatInt((int) footerData[0][12]);
 
-        overviewModel.setDataVector(data, new String[]{"Extension", "Count", "Size SUM", "Size MIN", "Size MAX", "Size AVG", "Lines", "Lines MIN", "Lines MAX", "Lines AVG", "Lines CODE"});
+        overviewModel.setDataVector(data, new String[]{"Extension", "Count", "Size SUM", "Size MIN", "Size MAX", "Size AVG", "Lines", "Lines MIN", "Lines MAX", "Lines AVG", "Lines CODE", "Chars", "Chars AVG"});
         setupTable(overviewTable, UIHelper.OverViewTableCellRenderer, UIHelper.getOverViewTableSorter(new TableRowSorter<>(overviewModel)));
-        footerModel.setDataVector(footerData, new String[]{"", "", "", "", "", "", "", "", "", "", ""});
+        footerModel.setDataVector(footerData, new String[]{"", "", "", "", "", "", "", "", "", "", "", "", ""});
 
         //Adds the new timeline tab as the second tab ONLY IF it's a normal refresh
         if (path.equals(projectPath)) {
-            handleTimelineTab((int) footerData[0][10], (int) footerData[0][6]);
+            handleTimelineTab((int) footerData[0][10], Integer.parseInt(footerData[0][6].toString().replace(".", "")));
         } else {
             CodeStatsWindow.TABBED_PANE.addTab("Refresh to reset view", AllIcons.Actions.QuickfixBulb, new JTabbedPane());
         }
@@ -342,14 +348,14 @@ public final class Parser {
     }
 
     private void buildSeparateTabs() {
-        var columnNames = new String[]{"Source File", "Total Lines", "Source Code Lines", "Source Code Lines [%]", "Comment Lines", "Documentation Lines", "Blank Lines", "Blank Lines [%]"};
+        var columnNames = new String[]{"Source File", "Total Lines", "Source Code Lines", "Source Code Lines [%]", "Comment Lines", "Documentation Lines", "Blank Lines", "Blank Lines [%]", "Chars", "Chars AVG per Line"};
 
         for (var pair : tabs.entrySet()) {
             var fileList = pair.getValue();
             if (fileList.isEmpty()) continue;
 
             var data = new Object[fileList.size()][];
-            var footerTotals = new int[]{0, 0, 0, 0, 0}; // Total Lines, Source Code Lines, Comment Lines, Blank Lines
+            var footerTotals = new int[]{0, 0, 0, 0, 0, 0, 0}; // Total Lines, Source Code Lines, Comment Lines, Blank Lines
             int i = 0;
 
             for (var entry : fileList) {
@@ -359,24 +365,31 @@ public final class Parser {
                         (int) (entry.sourceCodeLines * 100.0f / entry.totalLines + 0.5) + "%",
                         entry.commentLines,
                         entry.docLines, entry.blankLines,
-                        (int) (entry.blankLines * 100.0f / entry.totalLines + 0.5) + "%"};
+                        (int) (entry.blankLines * 100.0f / entry.totalLines + 0.5) + "%",
+                        entry.chars,
+                        entry.totalLines == 0 ? entry.chars : entry.chars / entry.totalLines
+                };
 
                 footerTotals[0] += entry.totalLines;
                 footerTotals[1] += entry.sourceCodeLines;
                 footerTotals[2] += entry.commentLines;
                 footerTotals[3] += entry.docLines;
                 footerTotals[4] += entry.blankLines;
+                footerTotals[5] += entry.chars;
+                footerTotals[6] += entry.totalLines == 0 ? entry.chars : entry.chars / entry.totalLines;
             }
 
             var footerData = new Object[][]{
                     {"Total:",
-                            footerTotals[0],
+                            FormatUtils.formatInt(footerTotals[0]),
                             footerTotals[1],
                             String.format("%d%%", (int) (100 * (footerTotals[1] / (float) footerTotals[0]))),
                             footerTotals[2],
                             footerTotals[3],
                             footerTotals[4],
-                            String.format("%d%%", (int) (100 * (footerTotals[4] / (float) footerTotals[0])))
+                            String.format("%d%%", (int) (100 * (footerTotals[4] / (float) footerTotals[0]))),
+                            FormatUtils.formatInt(footerTotals[5]),
+                            FormatUtils.formatInt(footerTotals[6])
                     }
             };
 
@@ -389,7 +402,7 @@ public final class Parser {
         var table = new JBTable(tabTableModel);
         setupTable(table, UIHelper.SeparateTableCellRenderer, UIHelper.getSeparateTabTableSorter(new TableRowSorter<>(tabTableModel)));
 
-        var tabFooterModel = new DefaultTableModel(footerData, new String[]{"", "", "", "", "", "", "", ""});
+        var tabFooterModel = new DefaultTableModel(footerData, new String[]{"", "", "", "", "", "", "", "", "", ""});
         var tabFooterTable = new JBTable(tabFooterModel);
         setupFooter(tabFooterTable);
 
@@ -419,92 +432,80 @@ public final class Parser {
     public void parseFile(Path path, String extension) {
         overView.computeIfAbsent(extension, k -> new OverViewEntry());
 
-        if (separateTabs.contains(extension)) {
-            var entry = new StatEntry(path.getFileName().toString());
-            long size = 0;
-            final int[] miscLines = {0}; // New concept - misc lines are deducted from source code lines as well but not shown
-            var stateFlags = new BoolContainer(); // first = multiline comment / second = multiline doc
-            try {
-                size = Files.size(path);
-                try (Stream<String> linesStream = Files.newBufferedReader(path, charset).lines()) {
-                    linesStream.forEach(line -> {
-                        line = line.trim();
-                        if (stateFlags.multiLineCommentJava || stateFlags.multiLineDocJava || stateFlags.multiLineLIneDocPython) {
-                            if (stateFlags.multiLineDocJava && line.startsWith("*")) {
-                                entry.docLines++;
-                            }
-                            if (stateFlags.multiLineCommentJava) {
-                                entry.commentLines++;
-                            }
-                            if (stateFlags.multiLineLIneDocPython) {
-                                entry.docLines++;
-                            }
-                            if (line.contains("*/")) {
+
+        var entry = new StatEntry(path.getFileName().toString());
+        long size = 0;
+        final int[] miscLines = {0}; // New concept - misc lines are deducted from source code lines as well but not shown
+        var stateFlags = new BoolContainer(); // first = multiline comment / second = multiline doc
+        try {
+            size = Files.size(path);
+            try (Stream<String> linesStream = Files.newBufferedReader(path, charset).lines()) {
+                linesStream.forEach(line -> {
+                    line = line.trim();
+                    if (stateFlags.multiLineCommentJava || stateFlags.multiLineDocJava || stateFlags.multiLineLIneDocPython) {
+                        if (stateFlags.multiLineDocJava && line.startsWith("*")) {
+                            entry.docLines++;
+                        }
+                        if (stateFlags.multiLineCommentJava) {
+                            entry.commentLines++;
+                        }
+                        if (stateFlags.multiLineLIneDocPython) {
+                            entry.docLines++;
+                        }
+                        if (line.contains("*/")) {
+                            stateFlags.multiLineCommentJava = false;
+                            stateFlags.multiLineDocJava = false;
+                        } else if (line.contains("\"\"\"")) {
+                            stateFlags.multiLineLIneDocPython = false;
+                        }
+                    } else {
+                        if (line.isEmpty()) {
+                            entry.blankLines++;
+                        } else if (line.startsWith("//") || line.startsWith("#") || line.startsWith("--")) {
+                            entry.commentLines++;
+                        } else if (line.startsWith("/*")) {
+                            stateFlags.multiLineCommentJava = true;
+                            entry.commentLines++;
+                            if (line.startsWith("/**")) {
+                                stateFlags.multiLineDocJava = true;
                                 stateFlags.multiLineCommentJava = false;
-                                stateFlags.multiLineDocJava = false;
-                            } else if (line.contains("\"\"\"")) {
+                                entry.commentLines--;
+                                entry.docLines++;
+                            }
+                        } else if (line.startsWith("\"\"\"")) {
+                            stateFlags.multiLineLIneDocPython = true;
+                            if (line.contains("\"\"\"")) {
+                                entry.docLines++;
                                 stateFlags.multiLineLIneDocPython = false;
                             }
-                        } else {
-                            if (line.isEmpty()) {
-                                entry.blankLines++;
-                            } else if (line.startsWith("//") || line.startsWith("#") || line.startsWith("--")) {
-                                entry.commentLines++;
-                            } else if (line.startsWith("/*")) {
-                                stateFlags.multiLineCommentJava = true;
-                                entry.commentLines++;
-                                if (line.startsWith("/**")) {
-                                    stateFlags.multiLineDocJava = true;
-                                    stateFlags.multiLineCommentJava = false;
-                                    entry.commentLines--;
-                                    entry.docLines++;
-                                }
-                            } else if (line.startsWith("\"\"\"")) {
-                                stateFlags.multiLineLIneDocPython = true;
-                                if (line.contains("\"\"\"")) {
-                                    entry.docLines++;
-                                    stateFlags.multiLineLIneDocPython = false;
-                                }
-                            } else if (line.startsWith("import") || line.startsWith("#include") || line.startsWith("package") || line.startsWith("from")) {
-                                miscLines[0]++;
-                            }
+                        } else if (line.startsWith("import") || line.startsWith("#include") || line.startsWith("package") || line.startsWith("from")) {
+                            miscLines[0]++;
                         }
-                        entry.totalLines++;
-                    });
-                }
-            } catch (UncheckedIOException | IOException e) {
-                try {
-                    if (size > 50000000) {
-                        entry.totalLines = ParsingUtil.parseLargeNonUTFFile(path);
-                    } else {
-                        entry.totalLines = ParsingUtil.parseSmallNonUTFFile(path);
                     }
-                } catch (IOException ignored) {
-                }
+                    entry.totalLines++;
+                    entry.chars += line.length();
+                });
             }
-            //setting separate tab entry data
-            entry.sourceCodeLines = entry.totalLines - entry.blankLines - entry.commentLines - entry.docLines;
-            if (!countMiscLines) entry.sourceCodeLines -= miscLines[0];
-
-            //setting over view entry data
-            overView.get(extension).addValues(size, entry.totalLines, entry.sourceCodeLines);
-
-            tabs.get(extension).add(entry);
-        } else {
-            int lines = 0;
-            long size = 0;
+        } catch (UncheckedIOException | IOException e) {
             try {
-                size = Files.size(path);
                 if (size > 50000000) {
-                    lines = ParsingUtil.parseLargeNonUTFFile(path);
+                    entry.totalLines = ParsingUtil.parseLargeNonUTFFile(path);
                 } else {
-                    lines = ParsingUtil.parseSmallNonUTFFile(path);
+                    entry.totalLines = ParsingUtil.parseSmallNonUTFFile(path);
                 }
             } catch (IOException ignored) {
             }
+        }
+        //setting separate tab entry data
+        entry.sourceCodeLines = entry.totalLines - entry.blankLines - entry.commentLines - entry.docLines;
+        if (!countMiscLines) entry.sourceCodeLines -= miscLines[0];
 
-            //setting overview entry data
-            overView.get(extension).addValues(size, lines, 0);
+        //setting over view entry data
+        if (separateTabs.contains(extension)) {
+            overView.get(extension).addValues(size, entry.totalLines, entry.sourceCodeLines, entry.chars);
+            tabs.get(extension).add(entry);
+        } else {
+            overView.get(extension).addValues(size, entry.totalLines, 0, entry.chars);
         }
     }
 

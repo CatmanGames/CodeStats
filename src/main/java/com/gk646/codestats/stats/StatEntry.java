@@ -39,6 +39,7 @@ public final class StatEntry {
     int commentLines;
     int blankLines;
     int docLines;
+    int chars;
 
     StatEntry(String name) {
         this.name = name;
@@ -53,6 +54,7 @@ public final class StatEntry {
                 ", commentLines=" + commentLines +
                 ", blankLines=" + blankLines +
                 ", docLines=" + docLines +
+                ", chars=" + chars +
                 '}';
     }
 }

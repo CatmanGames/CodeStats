@@ -36,6 +36,7 @@ public final class OverViewEntry {
     int linesMin = Integer.MAX_VALUE;
     int linesMax;
     int linesCode;
+    int chars;
 
     /**
      * As new files are parsed its stats are added to the overview tab at the correct position.
@@ -44,7 +45,7 @@ public final class OverViewEntry {
      * @param totalLines
      * @param sourceCodeLines
      */
-    public void addValues(long size, int totalLines, int sourceCodeLines) {
+    public void addValues(long size, int totalLines, int sourceCodeLines, int chars) {
         count++;
 
         sizeSum += size;
@@ -63,6 +64,7 @@ public final class OverViewEntry {
             linesMax = totalLines;
         }
         linesCode += sourceCodeLines;
+        this.chars += chars;
     }
 
 

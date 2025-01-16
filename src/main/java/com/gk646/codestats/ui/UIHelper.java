@@ -52,12 +52,9 @@ import javax.swing.table.TableRowSorter;
 import java.awt.Component;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
-import java.awt.Insets;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
-import java.lang.reflect.Array;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -137,6 +134,8 @@ public final class UIHelper {
         sorter.setComparator(8, Comparator.comparingInt(a -> (Integer) a));
         sorter.setComparator(9, Comparator.comparingInt(a -> (Integer) a));
         sorter.setComparator(10, Comparator.comparingInt(a -> (Integer) a));
+        sorter.setComparator(11, Comparator.comparingInt(a -> (Integer) a));
+        sorter.setComparator(12, Comparator.comparingInt(a -> (Integer) a));
         return sorter;
     }
 
@@ -147,6 +146,8 @@ public final class UIHelper {
         sorter.setComparator(4, Comparator.comparingInt(a -> (Integer) a));
         sorter.setComparator(6, Comparator.comparingInt(a -> (Integer) a));
         sorter.setComparator(5, Comparator.comparingInt(a -> (Integer) a));
+        sorter.setComparator(8, Comparator.comparingInt(a -> (Integer) a));
+        sorter.setComparator(9, Comparator.comparingInt(a -> (Integer) a));
 
         sorter.setComparator(3, Comparator.comparingInt(a -> Integer.parseInt(((String) a).replace("%", ""))));
         sorter.setComparator(7, Comparator.comparingInt(a -> Integer.parseInt(((String) a).replace("%", ""))));
